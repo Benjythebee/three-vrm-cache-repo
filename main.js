@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { VRMCoreLoaderPlugin } from '@pixiv/three-vrm-core';
+import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
 import { loadMixamoAnimation } from './loadMixamoAnimation.js';
 import GUI from 'three/addons/libs/lil-gui.module.min.js';
 
@@ -10,7 +10,6 @@ const renderer = new THREE.WebGLRenderer();
 renderer.setSize( window.innerWidth, window.innerHeight );
 renderer.setPixelRatio( window.devicePixelRatio );
 document.body.appendChild( renderer.domElement );
-THREE.Cache.enabled = true;
 
 // camera
 const camera = new THREE.PerspectiveCamera( 30.0, window.innerWidth / window.innerHeight, 0.1, 20.0 );
@@ -34,7 +33,7 @@ const defaultModelUrl = '/default.vrm';
 
 // gltf and vrm
 let currentVrm = undefined;
-let currentAnimationUrl = null;
+let currentAnimationUrl = undefined;
 let currentMixer = undefined;
 
 const helperRoot = new THREE.Group();
@@ -50,23 +49,24 @@ function loadVRM( modelUrl ) {
 
 	loader.register( ( parser ) => {
 
-		return new VRMCoreLoaderPlugin( parser, { helperRoot: helperRoot, autoUpdateHumanBones: true } );
+		return new VRMLoaderPlugin( parser, { helperRoot: helperRoot, autoUpdateHumanBones: true } );
 
 	} );
 
 	loader.load(
-
 		// URL of the VRM you want to load
 		modelUrl,
 
 		// called when the resource is loaded
 		( gltf ) => {
 
-			const vrm = gltf.userData.vrmCore;
+			const vrm = gltf.userData.vrm;
 
 			if ( currentVrm ) {
 
 				scene.remove( currentVrm.scene );
+
+				VRMUtils.deepDispose( currentVrm.scene );
 
 			}
 
@@ -87,6 +87,9 @@ function loadVRM( modelUrl ) {
 
 			}
 
+			// rotate if the VRM is VRM0.0
+			VRMUtils.rotateVRM0( vrm );
+
 			console.log( vrm );
 
 		},
@@ -96,7 +99,6 @@ function loadVRM( modelUrl ) {
 
 		// called when loading has errors
 		( error ) => console.error( error ),
-
 	);
 
 }
@@ -108,6 +110,7 @@ function loadFBX( animationUrl ) {
 
 	currentAnimationUrl = animationUrl;
 
+	currentVrm.humanoid.resetNormalizedPose();
 	// create AnimationMixer for VRM
 	currentMixer = new THREE.AnimationMixer( currentVrm.scene );
 
@@ -198,7 +201,7 @@ window.addEventListener( 'drop', function ( event ) {
 	const url = URL.createObjectURL( blob );
 
 	if ( fileType === 'fbx' ) {
-		console.log( 'FBX,',url );
+
 		loadFBX( url );
 
 	} else {
